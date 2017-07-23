@@ -1,0 +1,309 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.7",
+    "parameters": {
+        "virtualNetworkName": {
+            "type": "string",
+            "metadata": {
+                "description": "The virtual network containing the subnets Uplink and Zone"
+            },
+            "defaultValue": "scha-vnet"
+        },
+        "addressPrefix": {
+            "type": "string",
+            "metadata": {
+                "description": "CIDR of the virtual network base adress range"
+            },
+            "defaultValue": "10.10.0.0/16"
+        },
+        "subnet1Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Subnet name for uplink, to which the nic1 of each steelconnect gateway will be attached"
+            },
+            "defaultValue": "uplink"
+        },
+        "subnet1Prefix": {
+            "type": "string",
+            "metadata": {
+                "description": "CIDR of the subnet uplink"
+            },
+            "defaultValue": "10.10.1.0/24"
+        },
+        "subnet2Name": {
+            "type": "string",
+            "metadata": {
+                "description": "Subnet name for zone, to which the nic2 of each steelconnect gateway will be attached"
+            },
+            "defaultValue": "zone"
+        },
+        "subnet2Prefix": {
+            "type": "string",
+            "metadata": {
+                "description": "CIDR of the subnet zone"
+            },
+            "defaultValue": "10.10.2.0/24"
+        },
+        "storageAccountType": {
+            "type": "string",
+            "metadata": {
+                "description": "Storage account type for the managed disk."
+            },
+            "defaultValue": "Standard_LRS",
+            "allowedValues": [
+                "Standard_LRS",
+                "Premium_LRS"
+            ]
+        },
+        "schaVHDSourceUri": {
+            "type": "string",
+            "metadata": {
+                "description": "URI of the steelconnect image (exported from SCM and aligned for azure compatibilty)"
+            },
+            "defaultValue": "https://schawvkmmms2vowr2.blob.core.windows.net/steelconnect-images/gw-vm.vhd"
+        },
+        "gwVirtualMachineSize": {
+            "type": "string",
+            "metadata": {
+                "description": "VM size for SteelConnect gateway. Ex. Standard_D2_v2_Promo, Standard_A2_v2,...  "
+            },
+            "defaultValue": "Standard_D2_v2_Promo"
+        }
+    },
+    "variables": {
+        "appPrefix": "scha",
+        "vnetId": "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]",
+        "subnet1Ref": "[concat(variables('vnetId'), '/subnets/', parameters('subnet1Name'))]",
+        "subnet2Ref": "[concat(variables('vnetId'), '/subnets/', parameters('subnet2Name'))]",
+        "publicIPAddressType": "Dynamic",
+        "publicIpAddressName": "[concat(variables('appPrefix'),'-pip')]",
+        "gw1NetworkInterface1Name": "[concat(variables('appPrefix'),'-gw1-nic1')]",
+        "gw1NetworkInterface2Name": "[concat(variables('appPrefix'),'-gw1-nic2')]",
+        "gw2NetworkInterface1Name": "[concat(variables('appPrefix'),'-gw2-nic1')]",
+        "gw2NetworkInterface2Name": "[concat(variables('appPrefix'),'-gw2-nic2')]",
+        "dnsLabelPrefix": "[variables('appPrefix')]",
+        "gw1diskName": "[concat(variables('appPrefix'),'-gw1-disk-',uniquestring(resourceGroup().id))]",
+        "gwAvSetName": "scha-avset",
+        "gw1VirtualMachineName": "[concat(variables('appPrefix'),'-gw1')]",
+        "gw2VirtualMachineName": "[concat(variables('appPrefix'),'-gw2')]"
+    },
+    "resources": [
+        {
+            "name": "[parameters('virtualNetworkName')]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2017-04-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('addressPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[parameters('subnet1Name')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet1Prefix')]"
+                        }
+                    },
+                    {
+                        "name": "[parameters('subnet2Name')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet2Prefix')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('publicIpAddressName')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2017-04-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIPAllocationMethod": "[variables('publicIpAddressType')]",
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('dnsLabelPrefix')]"
+                }
+            }
+        },
+        {
+            "name": "[variables('gw1NetworkInterface1Name')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2017-04-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnet1Ref')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('gw1NetworkInterface2Name')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2017-04-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig2",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnet2Ref')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('gw2NetworkInterface1Name')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2017-04-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnet1Ref')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('gw2NetworkInterface2Name')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2017-04-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig2",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnet2Ref')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2016-04-30-preview",
+            "type": "Microsoft.Compute/availabilitySets",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('gwAvSetName')]",
+            "properties": {
+                "PlatformUpdateDomainCount": "3",
+                "PlatformFaultDomainCount": "2"
+            },
+            "sku": {
+                "name": "Aligned"
+            }
+        },
+        {
+            "type": "Microsoft.Compute/disks",
+            "name": "[variables('gw1diskName')]",
+            "apiVersion": "2016-04-30-preview",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "accountType": "[parameters('storageAccountType')]",
+                "osType": "Linux",
+                "creationData": {
+                    "createOption": "Import",
+                    "sourceUri": "[parameters('schaVHDSourceUri')]"
+                },
+                "diskSizeGB": 1
+            },
+            "dependsOn": []
+        },
+        {
+            "apiVersion": "2016-04-30-preview",
+            //"apiVersion": "2017-03-30",
+            "name": "[variables('gw1VirtualMachineName')]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkInterfaces/', variables('gw1NetworkInterface1Name'))]",
+                "[concat('Microsoft.Network/networkInterfaces/', variables('gw1NetworkInterface2Name'))]"
+            ],
+            "properties": {
+                "availabilitySet": {
+                    "id": ""
+                },
+                "hardwareProfile": {
+                    "vmSize": "[parameters('gwVirtualMachineSize')]"
+                },
+                "osProfile": {},
+                "storageProfile": {
+                    "imageReference": {},
+                    "osDisk": {
+                        "createOption": "Attach",
+                        "osType": "Linux",
+                        "managedDisk": {
+                            "storageAccountType": "[parameters('storageAccountType')]",
+                            "id": "[resourceId('Microsoft.Compute/disks/', variables('gw1diskName'))]"
+                        }
+                    },
+                    "dataDisks": []
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('gw1NetworkInterface1Name'))]"
+                        },
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('gw1NetworkInterface2Name'))]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {}
+            }
+        }
+    ],
+    "outputs": {
+        "schaGW1networkInterface1Id": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Network/networkInterfaces', variables('gw1networkInterface1Name'))]"
+        },
+        "schaGW1networkInterface2Id": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Network/networkInterfaces', variables('gw1networkInterface2Name'))]"
+        },
+        "schaGW2networkInterface1Id": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Network/networkInterfaces', variables('gw2networkInterface1Name'))]"
+        },
+        "schaGW2networkInterface2Id": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Network/networkInterfaces', variables('gw2networkInterface2Name'))]"
+        }
+    }
+}
