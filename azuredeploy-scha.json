@@ -189,24 +189,8 @@
             }        
         },
 
-        {
-            "type": "Microsoft.Storage/storageAccounts",
-            "name": "[variables('storageAccountName')]",
-            "apiVersion": "2017-06-01",
-            "location": "[resourceGroup().location]",
-            "sku": {
-                "name": "[variables('vhdStorageType')]"
-            },
-            "kind": "Storage",
-            "properties": {}
-        },
-
     ],
     "outputs": {
-        "storageAccountName": {
-            "type": "string",
-            "value": "[variables('storageAccountName')]"
-        },
         "schaGW1networkInterface1Id": {
             "type": "string",
             "value": "[resourceId('Microsoft.Network/networkInterfaces', variables('schaGW1networkInterface1Name'))]"
